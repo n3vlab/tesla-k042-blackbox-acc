@@ -1,0 +1,424 @@
+# K042 (M5Stack ATOM HUB Switch + ATOM Lite) — Tesla VCSEC 탑승 감지로 블랙박스 ACC 자동 전환
+#
+# 하는 일: 가장 낮은 권한(CHARGING_MANAGER) BLE 키로 VCSEC "User Present" 를 읽어
+#         Relay 1(UP04 ACC)을 켜고 끈다. HA 는 MQTT 로 보조 ON 만 보낸다.
+#
+# 요구: ESPHome 2026.9.0 이상 (패키지가 API 키 기반 암호화 OTA 를 쓴다)
+
+substitutions:
+  name: k042-x800
+  friendly_name: K042 X800
+  # main 이 아니라 릴리스 태그로 고정 — 업데이트는 직접 올린다
+  tesla_ble_ref: v2026.10.1
+  ble_mac_address: !secret tesla_ble_mac_address
+  tesla_vin: !secret tesla_vin
+  # VCSEC 조회는 차를 깨우지 않는다. 탑승 감지 지연을 줄이려면 이 값을 내린다(최소 5).
+  vcsec_poll_interval: "10"
+  # infotainment 조회는 PoC 에 필요 없다 — 깨어 있을 때 최대 간격, 최단 시간 안에 재우기
+  infotainment_poll_interval_awake: "600"
+  infotainment_sleep_timeout: "60"
+
+packages:
+  yoziru.esphome-tesla-ble:
+    url: https://github.com/yoziru/esphome-tesla-ble.git
+    ref: ${tesla_ble_ref}
+    # ATOM Lite = ESP32-PICO-D4 (클래식 ESP32, 4MB) → generic
+    files: [tesla-ble-esp32-generic.dashboard.yml]
+
+esphome:
+  name: ${name}
+  name_add_mac_suffix: false
+  friendly_name: ${friendly_name}
+
+api:
+  encryption:
+    key: !secret k042_api_key
+  # 차 안에서는 HA API 가 절대 연결되지 않는다. 기본값(15분)이면 15분마다 재부팅한다.
+  reboot_timeout: 0s
+
+wifi:
+  # 집(IoT VLAN)과 차(Mudi V2) 두 곳. 신호가 잡히는 쪽에 붙는다.
+  # 이 패키지는 Wi-Fi 가 끊기면 BLE 스캔도 멈추므로, 차에서는 Mudi Wi-Fi 가 필수다.
+  networks:
+    - ssid: !secret wifi_ssid
+      password: !secret wifi_password
+    - ssid: !secret mudi_wifi_ssid
+      password: !secret mudi_wifi_password
+  ap:
+    password: !secret k042_ap_password
+
+# 차 안에서는 HA 가 K042 에 직접 닿지 않는다(Mudi WG 는 차→집 1883 만).
+# 상태·명령은 car-mqtt 로 보내고, car-mqtt 브리지가 HA 브로커로 넘긴다.
+# 경계는 브리지 토픽 목록: tesla/x800/# (양방향), homeassistant/+/k042-x800/# (discovery, out)
+mqtt:
+  broker: 192.168.X.Y            # 차량 전용 MQTT 브로커 (WireGuard 너머)
+  port: 1883
+  username: k042
+  password: !secret k042_mqtt_password
+  topic_prefix: tesla/x800/k042
+  # 기본값(false)은 loopTask 에서 esp_mqtt_client_publish 를 직접 불러 MQTT 태스크와 락을 공유한다.
+  # 차(LTE+WG, BLE 공존)에서 네트워크가 느리면 loopTask 가 락을 5초 넘게 기다려 Task WDT 로 재부팅됐다
+  # (2026-10-16 USB 로그: task_wdt loopTask, CPU1 IDLE). 큐에 넣고 바로 돌아오게 한다.
+  idf_send_async: true
+  discovery_prefix: homeassistant
+  # idf_send_async 큐는 30개 고정(MQTT_QUEUE_LENGTH). 접속 때 discovery ~27 + 상태 ~27 이 몰리면
+  # LTE 에서 넘쳐 버려진다(2026-10-16: User Present/Asleep 상태가 HA 에 도착 못 함).
+  # discovery 는 HA 브로커에 retained 로 이미 있다 → 끈다. 엔티티를 추가할 때만 집에서 잠깐 true 로.
+  discovery: false
+  # 경고 이상만 MQTT 로 (차 안 진단용, LTE 데이터 절약)
+  log_topic:
+    topic: tesla/x800/k042/debug
+    level: WARN
+  # ACC 명령: HA → K042 ACC 명령. ON 은 언제나 수락(3분 유지), OFF 는 탑승 중이면 무시.
+  # HA 는 기어 D/R/N 동안 ON 을 1분마다 다시 보내 유지를 연장한다(HA 자동화).
+  on_message:
+    - topic: tesla/x800/acc/set
+      then:
+        - lambda: |-
+            if (!id(acc_auto).state) {
+              ESP_LOGW("acc", "MQTT %s ignored: ACC Auto off", x.c_str());
+              return;
+            }
+            uint32_t now = millis();
+            if (x == "ON") {
+              id(acc_hold_until) = now + 180000;
+              id(acc_off_at) = 0;
+              if (!id(relay_acc).state) id(relay_acc).turn_on();
+              id(acc_reason) = "ON mqtt_hold";
+            } else if (x == "OFF") {
+              static binary_sensor::BinarySensor *up = nullptr;
+              if (up == nullptr)
+                for (auto *e : App.get_binary_sensors())
+                  if (strcmp(e->get_name().c_str(), "User Present") == 0) { up = e; break; }
+              bool present = id(ble_tesla_id).connected() && up != nullptr && up->has_state() && up->state;
+              if (present) {
+                ESP_LOGW("acc", "MQTT OFF ignored: VCSEC present");
+                return;
+              }
+              id(acc_hold_until) = now;
+              id(acc_off_at) = 0;
+              if (id(relay_acc).state) id(relay_acc).turn_off();
+              id(acc_reason) = "OFF mqtt";
+            }
+
+# 차 안 비상용: 폰을 Mudi Wi-Fi 에 붙이고 http://<K042 IP> → 페어링 버튼·탑승 감지 값
+web_server:
+  port: 80
+  auth:
+    username: k042
+    password: !secret k042_web_password
+
+# 패키지 기본값 DRIVER(잠금 해제·주행 가능)를 덮어쓴다. 차 안에 두는 장치는 최소 권한.
+# 역할은 페어링 때 정해지므로 바꾸려면 키를 지우고 다시 페어링해야 한다.
+tesla_ble_vehicle:
+  role: CHARGING_MANAGER
+
+# ── ACC 상태머신 (Tasker 없이 VCSEC + HA MQTT) ──
+#   ON : VCSEC 탑승  또는  MQTT ON 후 3분 유지 중
+#   OFF: VCSEC 정상 + 탑승 없음 + 유지 끝 → 30초 뒤
+#   VCSEC 불가(BLE 끊김·값 없음)는 OFF 근거로 쓰지 않는다 → 현재 상태 유지
+#   재부팅: Relay ON 으로 시작 → VCSEC 가 '없음'이면 30초 뒤 OFF
+globals:
+  - id: acc_off_at          # OFF 예정 시각(millis), 0 = 대기 없음
+    type: uint32_t
+    initial_value: '0'
+  - id: acc_hold_until      # MQTT ON 유지 기한(millis)
+    type: uint32_t
+    initial_value: '0'
+  - id: acc_reason          # 마지막 판단 근거 
+    type: std::string
+    initial_value: '"ON boot"'
+
+# ── K042 하드웨어 (회로도 2026-10-16 확인) ──
+switch:
+  # Relay 1 → UP04 ACC (COM–N.O.). HIGH = 코일 여자 = ACC 12V
+  # 재부팅 시 ON 으로 시작 (주행 중 재부팅해도 주차모드로 떨어지지 않게)
+  - platform: gpio
+    pin: GPIO22
+    id: relay_acc
+    name: "Relay ACC"
+    icon: mdi:car-key
+    restore_mode: ALWAYS_ON
+  # ACC 자동 판단 on/off. 끄면 Relay ACC 를 손으로만 움직인다(시험용).
+  # 재부팅하면 항상 자동으로 돌아온다 — 수동 상태가 차에 남지 않게.
+  - platform: template
+    id: acc_auto
+    name: "ACC Auto"
+    icon: mdi:robot
+    entity_category: config
+    optimistic: true
+    restore_mode: ALWAYS_ON
+  # Relay 2 — 미사용(예비). 코일 전력을 쓰지 않도록 항상 LOW
+  - platform: gpio
+    pin: GPIO19
+    id: relay_spare
+    internal: true
+    restore_mode: ALWAYS_OFF
+
+binary_sensor:
+  # ATOM Lite 앞면 버튼(GPIO39, 외부 풀업). 차 안에서 잘못 눌려도 ACC 가 바뀌지 않게 동작은 없앴다.
+  - platform: gpio
+    pin:
+      number: GPIO39
+      inverted: true
+    name: "Button"
+    entity_category: diagnostic
+
+  # ── Tesla 엔티티를 MQTT 로 복사 ──
+  # tesla_ble_vehicle 는 엔티티를 스키마 검증 없이 만들어 mqtt_id 가 붙지 않는다 → API 전용.
+  # 차 안에서는 API 가 안 닿으므로 같은 값을 템플릿 엔티티로 다시 내보낸다.
+  # 원본 ID 는 YAML 에서 보이지 않아(id() 검증 실패) App 레지스트리에서 이름으로 찾는다.
+  - platform: template
+    name: "Car User Present"
+    device_class: occupancy
+    lambda: |-
+      static binary_sensor::BinarySensor *s = nullptr;
+      if (s == nullptr)
+        for (auto *e : App.get_binary_sensors())
+          if (strcmp(e->get_name().c_str(), "User Present") == 0) { s = e; break; }
+      if (s == nullptr || !s->has_state()) return {};
+      return s->state;
+  - platform: template
+    name: "Car Asleep"
+    icon: mdi:sleep
+    lambda: |-
+      static binary_sensor::BinarySensor *s = nullptr;
+      if (s == nullptr)
+        for (auto *e : App.get_binary_sensors())
+          if (strcmp(e->get_name().c_str(), "Asleep") == 0) { s = e; break; }
+      if (s == nullptr || !s->has_state()) return {};
+      return s->state;
+  - platform: template
+    name: "Car Pairing Required"
+    device_class: problem
+    entity_category: diagnostic
+    lambda: |-
+      static binary_sensor::BinarySensor *s = nullptr;
+      if (s == nullptr)
+        for (auto *e : App.get_binary_sensors())
+          if (strcmp(e->get_name().c_str(), "Pairing Required") == 0) { s = e; break; }
+      if (s == nullptr || !s->has_state()) return {};
+      return s->state;
+  - platform: template
+    name: "Car BLE Connected"
+    device_class: connectivity
+    entity_category: diagnostic
+    lambda: return id(ble_tesla_id).connected();
+
+text_sensor:
+  # 마지막 ACC 판단 근거. 바뀔 때만 발행
+  - platform: template
+    id: acc_reason_sensor
+    name: "ACC Reason"
+    icon: mdi:car-info
+    update_interval: 1s
+    lambda: |-
+      static std::string last;
+      if (id(acc_reason) == last) return {};
+      last = id(acc_reason);
+      return last;
+  - platform: template
+    name: "Car Last Command"
+    entity_category: diagnostic
+    update_interval: 5s
+    # 바뀔 때만 보낸다 (template text_sensor 는 같은 값도 매번 발행 → LTE 낭비)
+    lambda: |-
+      static text_sensor::TextSensor *s = nullptr;
+      static std::string last;
+      if (s == nullptr)
+        for (auto *e : App.get_text_sensors())
+          if (strcmp(e->get_name().c_str(), "Last Command") == 0) { s = e; break; }
+      if (s == nullptr || !s->has_state() || s->state == last) return {};
+      last = s->state;
+      return last;
+  # 관찰용: BLE 인포테인먼트로 기어가 읽히는지·지연은 얼마인지 (판단에는 아직 안 씀). 바뀔 때만 발행
+  - platform: template
+    name: "Car Shift State"
+    icon: mdi:car-shift-pattern
+    update_interval: 1s
+    lambda: |-
+      static text_sensor::TextSensor *s = nullptr;
+      static std::string last;
+      if (s == nullptr)
+        for (auto *e : App.get_text_sensors())
+          if (strcmp(e->get_name().c_str(), "Shift State") == 0) { s = e; break; }
+      if (s == nullptr || !s->has_state() || s->state == last) return {};
+      last = s->state;
+      return last;
+  # 진단: 미러가 원본을 찾았는지, 원본에 값이 있는지 (바뀔 때만 발행)
+  - platform: template
+    name: "Car Mirror Probe"
+    entity_category: diagnostic
+    update_interval: 15s
+    lambda: |-
+      static std::string last;
+      std::string out;
+      bool missing = false;
+      const char *names[] = {"User Present", "Asleep", "Pairing Required"};
+      for (auto *n : names) {
+        binary_sensor::BinarySensor *f = nullptr;
+        for (auto *e : App.get_binary_sensors())
+          if (strcmp(e->get_name().c_str(), n) == 0) { f = e; break; }
+        out += n; out += "=";
+        if (f == nullptr) { out += "missing"; missing = true; }
+        else if (!f->has_state()) out += "nostate";
+        else out += f->state ? "on" : "off";
+        out += "; ";
+      }
+      out += "bs=" + std::to_string(App.get_binary_sensors().size());
+      if (missing) {
+        out += " [";
+        for (auto *e : App.get_binary_sensors()) { out += e->get_name().c_str(); out += "|"; }
+        out += "]";
+      }
+      if (out.size() > 250) out.resize(250);
+      if (out == last) return {};
+      last = out;
+      return out;
+  # 재부팅 원인 — 차 안에서 MQTT 가 끊기는 이유를 가리는 핵심 단서
+  - platform: debug
+    reset_reason:
+      name: "Reset Reason"
+
+sensor:
+  - platform: debug
+    free:
+      name: "Free Heap"
+    block:
+      name: "Largest Free Block"
+    loop_time:
+      name: "Loop Time"
+
+debug:
+  update_interval: 30s
+
+# "X took a long time for an operation" 경고는 MQTT 큐만 차지한다
+logger:
+  logs:
+    component: ERROR
+
+button:
+  # Pair BLE Key 도 API 전용이라 MQTT 로 누를 수 있게 따로 둔다
+  - platform: template
+    name: "Car Pair BLE Key"
+    icon: mdi:key-wireless
+    entity_category: config
+    on_press:
+      - tesla_ble_vehicle.pair:
+          id: tesla_ble_vehicle_id
+
+# ── 상태 LED (ATOM Lite SK6812, GPIO27) ──
+#   빨강 깜빡임 = Wi-Fi 없음        노랑 = Wi-Fi OK, MQTT 안 됨
+#   파랑       = MQTT OK, 차 데이터 없음(BLE 미연결 또는 링크만 있고 VCSEC 값 없음)
+#   보라 깜빡임 = 페어링 필요        초록 = 차에서 VCSEC 값(잠김/탑승)을 받는 중
+# 차 안 야간 눈부심 때문에 밝기 20%
+light:
+  - platform: esp32_rmt_led_strip
+    id: status_led
+    internal: true
+    pin: GPIO27
+    num_leds: 1
+    chipset: SK6812
+    rgb_order: GRB
+    default_transition_length: 0s
+    restore_mode: ALWAYS_OFF
+
+interval:
+  - interval: 1s
+    then:
+      - lambda: |-
+          if (!id(acc_auto).state) return;
+          uint32_t now = millis();
+          static binary_sensor::BinarySensor *up = nullptr;
+          if (up == nullptr)
+            for (auto *e : App.get_binary_sensors())
+              if (strcmp(e->get_name().c_str(), "User Present") == 0) { up = e; break; }
+          bool vcsec_ok = id(ble_tesla_id).connected() && up != nullptr && up->has_state();
+          bool present = vcsec_ok && up->state;
+          bool held = (int32_t) (id(acc_hold_until) - now) > 0;
+          auto reason = [](const char *r) {
+            if (id(acc_reason) != r) {
+              id(acc_reason) = r;
+              ESP_LOGI("acc", "%s", r);
+            }
+          };
+          if (present || held) {
+            id(acc_off_at) = 0;
+            if (!id(relay_acc).state) id(relay_acc).turn_on();
+            reason(present ? "ON present" : "ON mqtt_hold");
+            return;
+          }
+          if (!vcsec_ok) {
+            id(acc_off_at) = 0;
+            reason(id(relay_acc).state ? "HOLD_ON vcsec_unavailable" : "HOLD_OFF vcsec_unavailable");
+            return;
+          }
+          // VCSEC 정상 + 탑승 없음 + 유지 끝
+          if (!id(relay_acc).state) {
+            if (id(acc_reason).rfind("OFF", 0) != 0) reason("OFF absent");
+            return;
+          }
+          if (id(acc_off_at) == 0) {
+            id(acc_off_at) = now + 30000;
+            reason("PENDING_OFF 30s");
+            return;
+          }
+          if ((int32_t) (now - id(acc_off_at)) >= 0) {
+            id(acc_off_at) = 0;
+            id(relay_acc).turn_off();
+            reason("OFF absent_30s");
+          }
+  # 큐 넘침으로 버려진 상태를 1분 안에 메운다 (바이너리 센서는 값이 바뀔 때만 다시 보내므로)
+  - interval: 60s
+    then:
+      - lambda: |-
+          if (!mqtt::global_mqtt_client->is_connected()) return;
+          static const char *pairs[][2] = {{"User Present", "car_user_present"},
+                                           {"Asleep", "car_asleep"},
+                                           {"Pairing Required", "car_pairing_required"}};
+          for (auto &p : pairs) {
+            for (auto *e : App.get_binary_sensors()) {
+              if (strcmp(e->get_name().c_str(), p[0]) != 0) continue;
+              if (e->has_state())
+                mqtt::global_mqtt_client->publish(
+                    std::string("tesla/x800/k042/binary_sensor/") + p[1] + "/state",
+                    std::string(e->state ? "ON" : "OFF"), 0, true);
+              break;
+            }
+          }
+  - interval: 1s
+    then:
+      - lambda: |-
+          static bool blink = false;
+          blink = !blink;
+          float r = 0, g = 0, b = 0;
+          bool on = true;
+          static binary_sensor::BinarySensor *pr = nullptr;
+          if (pr == nullptr)
+            for (auto *e : App.get_binary_sensors())
+              if (strcmp(e->get_name().c_str(), "Pairing Required") == 0) { pr = e; break; }
+          static binary_sensor::BinarySensor *as = nullptr;
+          if (as == nullptr)
+            for (auto *e : App.get_binary_sensors())
+              if (strcmp(e->get_name().c_str(), "Asleep") == 0) { as = e; break; }
+          bool vcsec_data = as != nullptr && as->has_state();
+          if (!wifi::global_wifi_component->is_connected()) {
+            r = 1; on = blink;
+          } else if (!mqtt::global_mqtt_client->is_connected()) {
+            r = 1; g = 0.5;
+          } else if (pr != nullptr && pr->has_state() && pr->state) {
+            r = 0.6; b = 1; on = blink;
+          } else if (!id(ble_tesla_id).connected() || !vcsec_data) {
+            b = 1;
+          } else {
+            g = 1;
+          }
+          if (!on) {
+            if (id(status_led).current_values.is_on())
+              id(status_led).turn_off().perform();
+            return;
+          }
+          auto call = id(status_led).turn_on();
+          call.set_rgb(r, g, b);
+          call.set_brightness(0.2);
+          call.perform();

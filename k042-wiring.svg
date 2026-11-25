@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 940 540" width="940" height="540" role="img" color="#1d2421" font-family="'IBM Plex Sans KR','Apple SD Gothic Neo','Malgun Gothic','Noto Sans KR',sans-serif">
+  <title>K042 배선도 — 12V 전원은 RS485 빨강·검정, ACC는 Relay 1 COM–NO</title>
+  <desc>12V 전원은 UP04 BATT, K042 RS485 단자 빨강, Relay 1 COM으로 갑니다. Relay 1 NO는 UP04 ACC로 갑니다. LTE 라우터는 보조배터리 USB에 직결합니다. 3P AC/DC IN 단자와 Relay 2에는 아무것도 연결하지 않습니다. 그림은 주차 상태(코일 꺼짐)입니다.</desc>
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#2b67a8"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="940" height="540" fill="#ffffff"/>
+
+  <!-- 12V 전원 (보조배터리) -->
+  <rect x="20" y="170" width="140" height="140" rx="6" fill="#ffffff" stroke="currentColor" stroke-width="1.5"/>
+  <text x="90" y="205" text-anchor="middle" font-size="16" font-weight="700" fill="currentColor">12V 전원</text>
+  <text x="90" y="224" text-anchor="middle" font-size="11" fill="#5d6a64">예: C300 DC 보조배터리</text>
+  <text x="90" y="238" text-anchor="middle" font-size="11" fill="#5d6a64">DC 자동꺼짐 Never</text>
+  <text x="150" y="257" text-anchor="end" font-size="12" font-weight="600" fill="#c62f26">+12V</text>
+  <text x="130" y="300" text-anchor="middle" font-size="12" font-weight="600" fill="#2a302d">GND</text>
+  <text x="50" y="300" text-anchor="middle" font-size="12" font-weight="600" fill="#2b67a8">USB</text>
+
+  <!-- LTE 라우터 (선택) -->
+  <path d="M50,310 V356" stroke="#2b67a8" stroke-width="3" marker-end="url(#arr)"/>
+  <rect x="10" y="360" width="90" height="48" rx="6" fill="#ffffff" stroke="#2b67a8" stroke-width="1.5"/>
+  <text x="55" y="383" text-anchor="middle" font-size="12" font-weight="600" fill="currentColor">LTE 라우터</text>
+  <text x="55" y="400" text-anchor="middle" font-size="10" fill="#5d6a64">(선택)</text>
+  <text x="55" y="426" text-anchor="middle" font-size="11" fill="#5d6a64">USB 직결</text>
+
+  <!-- 12V 배선 -->
+  <g fill="none" stroke="#c62f26" stroke-width="3" stroke-linejoin="round">
+    <path d="M160,240 H230"/>
+    <path d="M230,30 V370"/>
+    <path d="M230,30 H670 V115 H700"/>
+    <path d="M230,152 H390"/>
+    <path d="M230,370 H330"/>
+  </g>
+  <g fill="#c62f26">
+    <circle cx="230" cy="240" r="4.5"/><circle cx="230" cy="152" r="4.5"/>
+  </g>
+  <text x="450" y="22" text-anchor="middle" font-size="12" fill="#c62f26">12V 상시 — 릴레이 안 거침 (주차녹화 전원)</text>
+
+  <!-- GND 배선 -->
+  <g fill="none" stroke="#2a302d" stroke-width="3" stroke-linejoin="round">
+    <path d="M130,310 V450 H650 V185 H700"/>
+    <path d="M300,450 V400 H330"/>
+  </g>
+  <g fill="#2a302d"><circle cx="300" cy="450" r="4.5"/></g>
+  <text x="470" y="468" text-anchor="middle" font-size="12" fill="#5d6a64">GND 공통</text>
+
+  <!-- K042 본체 -->
+  <rect x="330" y="55" width="270" height="370" rx="6" fill="#ffffff" stroke="currentColor" stroke-width="1.5"/>
+  <text x="586" y="78" text-anchor="end" font-size="16" font-weight="700" fill="currentColor">K042</text>
+
+  <!-- 3P AC/DC IN 금지 -->
+  <rect x="338" y="72" width="16" height="36" rx="2" fill="#fbe9e7" stroke="#c62f26" stroke-width="1.5"/>
+  <text x="362" y="86" font-size="12" font-weight="600" fill="#c62f26">3P AC/DC IN</text>
+  <text x="362" y="102" font-size="11" fill="#5d6a64">220V용 AC-DC 모듈</text>
+  <path d="M268,90 H330" stroke="#c62f26" stroke-width="2" stroke-dasharray="5 4" fill="none"/>
+  <g stroke="#c62f26" stroke-width="3"><path d="M290,80 L310,100 M310,80 L290,100"/></g>
+  <text x="300" y="72" text-anchor="middle" font-size="11" font-weight="700" fill="#c62f26">금지</text>
+
+  <!-- Relay 1 -->
+  <text x="345" y="135" font-size="12" font-weight="600" fill="currentColor">Relay 1 · GPIO22</text>
+  <text x="345" y="168" font-size="11" fill="#5d6a64">COM</text>
+  <circle cx="390" cy="152" r="4" fill="currentColor"/>
+  <circle cx="470" cy="138" r="4" fill="none" stroke="currentColor" stroke-width="1.5"/>
+  <circle cx="470" cy="166" r="4" fill="currentColor"/>
+  <path d="M390,152 L466,166" stroke="currentColor" stroke-width="2.5"/>
+  <text x="480" y="134" font-size="11" font-weight="600" fill="#b86e00">NO</text>
+  <text x="480" y="182" font-size="11" fill="#5d6a64">NC</text>
+  <path d="M474,138 H700" stroke="#b86e00" stroke-width="3" fill="none"/>
+  <path d="M474,166 H560" stroke="#c9d1cd" stroke-width="2" stroke-dasharray="4 4" fill="none"/>
+  <text x="566" y="170" font-size="11" fill="#5d6a64">비움</text>
+  <text x="640" y="131" text-anchor="middle" font-size="11" fill="#b86e00">ACC</text>
+
+  <!-- Relay 2 -->
+  <text x="345" y="245" font-size="12" font-weight="600" fill="#5d6a64">Relay 2 · GPIO19</text>
+  <text x="345" y="265" font-size="11" fill="#5d6a64">미사용 — 단자 3개 모두 비움</text>
+
+  <!-- 4P RS485 -->
+  <rect x="338" y="330" width="16" height="84" rx="2" fill="#e5f3eb" stroke="#1f7a4a" stroke-width="1.5"/>
+  <text x="362" y="344" font-size="12" font-weight="600" fill="#1f7a4a">4P RS485 — 전원은 여기</text>
+  <rect x="362" y="364" width="14" height="10" fill="#d8312a"/>
+  <text x="382" y="374" font-size="12" font-weight="600" fill="currentColor">빨강 · 12V (9~24V)</text>
+  <rect x="362" y="394" width="14" height="10" fill="#111111" stroke="#5d6a64" stroke-width="1"/>
+  <text x="382" y="404" font-size="12" font-weight="600" fill="currentColor">검정 · GND</text>
+  <rect x="548" y="364" width="10" height="10" fill="#f2c21b"/><rect x="560" y="364" width="10" height="10" fill="#1f9bd7"/>
+  <text x="586" y="404" text-anchor="end" font-size="11" fill="#c62f26">노랑·파랑 비움</text>
+
+  <!-- UP04 -->
+  <rect x="700" y="95" width="180" height="110" rx="6" fill="#ffffff" stroke="currentColor" stroke-width="1.5"/>
+  <text x="845" y="155" text-anchor="middle" font-size="16" font-weight="700" fill="currentColor">UP04</text>
+  <text x="845" y="173" text-anchor="middle" font-size="11" fill="#5d6a64">→ X800 (정품 케이블)</text>
+  <text x="710" y="119" font-size="12" fill="#c62f26">BATT</text>
+  <text x="710" y="149" font-size="12" font-weight="600" fill="#b86e00">ACC</text>
+  <text x="710" y="189" font-size="12" fill="#2a302d">GND</text>
+
+  <!-- 범례 -->
+  <g font-size="12" fill="#5d6a64">
+    <line x1="20" y1="505" x2="44" y2="505" stroke="#c62f26" stroke-width="3"/><text x="50" y="509">12V</text>
+    <line x1="100" y1="505" x2="124" y2="505" stroke="#2a302d" stroke-width="3"/><text x="130" y="509">GND</text>
+    <line x1="185" y1="505" x2="209" y2="505" stroke="#b86e00" stroke-width="3"/><text x="215" y="509">ACC 신호</text>
+    <line x1="290" y1="505" x2="314" y2="505" stroke="#2b67a8" stroke-width="3"/><text x="320" y="509">USB 5V</text>
+    <text x="920" y="509" text-anchor="end">주차 상태(코일 꺼짐). 주행 감지 시 Relay 1이 NO에 붙음</text>
+  </g>
+</svg>
