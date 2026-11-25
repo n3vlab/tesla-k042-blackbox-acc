@@ -88,8 +88,9 @@
 
   <!-- UP04 -->
   <rect x="700" y="95" width="180" height="110" rx="6" fill="#ffffff" stroke="currentColor" stroke-width="1.5"/>
-  <text x="845" y="155" text-anchor="middle" font-size="16" font-weight="700" fill="currentColor">UP04</text>
-  <text x="845" y="173" text-anchor="middle" font-size="11" fill="#5d6a64">→ X800 (정품 케이블)</text>
+  <text x="825" y="145" text-anchor="middle" font-size="16" font-weight="700" fill="currentColor">UP04</text>
+  <text x="825" y="165" text-anchor="middle" font-size="11" fill="#5d6a64">→ X800</text>
+  <text x="825" y="180" text-anchor="middle" font-size="10" fill="#5d6a64">(70mai 정품 케이블)</text>
   <text x="710" y="119" font-size="12" fill="#c62f26">BATT</text>
   <text x="710" y="149" font-size="12" font-weight="600" fill="#b86e00">ACC</text>
   <text x="710" y="189" font-size="12" fill="#2a302d">GND</text>

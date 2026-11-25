@@ -8,7 +8,7 @@
 |---|---|
 | [`k042-x800.yaml`](k042-x800.yaml) | ESPHome 펌웨어 |
 | [`secrets.example.yaml`](secrets.example.yaml) | `secrets.yaml` 템플릿 |
-| [`k042-wiring.svg`](k042-wiring.svg) | 배선도 |
+| [`k042-wiring.png`](k042-wiring.png) · [`k042-wiring.svg`](k042-wiring.svg) | 배선도 (PNG / 원본 SVG) |
 
 ---
 
@@ -54,9 +54,9 @@ Model Y는 센트리·충전·공조 등으로 시거잭(12V 액세서리) 전�
 
 ## 3. 전원·배선
 
-![K042 배선도](k042-wiring.svg)
+[![K042 배선도](k042-wiring.png)](k042-wiring.png)
 
-*배선도 — 주차 상태(릴레이 코일 꺼짐). 같은 내용을 텍스트로 쓰면 아래와 같습니다.*
+*배선도 — 주차 상태(릴레이 코일 꺼짐). 확대해도 깨지지 않는 원본은 [`k042-wiring.svg`](k042-wiring.svg). 같은 내용을 텍스트로 쓰면 아래와 같습니다.*
 
 ```text
 12V(+) ─┬──> UP04 BATT                     (릴레이 거치지 않음 — 주차녹화 상시 전원)
