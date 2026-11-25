@@ -191,7 +191,7 @@ K042
 
 ### 6.2 `secrets.yaml`
 
-[`secrets.example.yaml`](secrets.example.yaml)을 `secrets.yaml`로 복사해 채웁니다. **`secrets.yaml`은 커밋하지 마세요.**
+[`secrets.example.yaml`](secrets.example.yaml)을 `secrets.yaml`로 복사해 채웁니다.
 
 - 차량 BLE MAC은 차 근처에서 BLE 스캐너로 찾습니다. 광고 이름은 `S` + VIN SHA1 앞 8바이트 hex + `C` 형태(예: `S1234abcd5678ef90C`)라 VIN으로 계산해 대조할 수 있습니다.
 
